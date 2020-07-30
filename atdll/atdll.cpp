@@ -10,15 +10,20 @@
 #include <hidpi.h>
 #include <hidusage.h>
 #include "detours.h"
+#include "wtypes.h"
+#include <iostream>
 
 // Version number
 #define VERSION_STRING "1.1.1"
 
 // Whether to output debugging information
-#define DEBUG_MODE 1
+#define DEBUG_MODE 0
 
 // If defined, writes debug output to this log file
 #define DEBUG_FILE "atdebug.log"
+
+// Whether or not to use ratio compensation
+#define RATIO_COMP true
 
 // HID usages that are not already defined
 #define HID_USAGE_DIGITIZER_CONTACT_ID 0x51
@@ -426,27 +431,120 @@ AT_RegisterTouchpadInput(HWND hWnd)
     }
 }
 
+
+
+// Get the horizontal and vertical screen sizes in pixels
+int GetDesktopResolution(int& sx, int& sy)
+{
+	RECT desktop;
+	// Get a handle to the desktop window
+	const HWND hDesktop = GetDesktopWindow();
+	// Get the size of screen to the variable desktop
+	GetWindowRect(hDesktop, &desktop);
+	// The top left corner will have coordinates (0,0)
+	// and the bottom right corner will have coordinates
+	// (sx, sy)
+	sx = desktop.right;
+	sy = desktop.bottom;
+	return sx, sy;
+}
+
+int Ratio_Compensate(LONG right, LONG bottom)
+{
+
+	//int s, xo, yo;
+	double sr, yo;
+
+	//float newty, newtx;
+
+	// Get screen resolution
+	int sx = GetSystemMetrics(SM_CXSCREEN);
+	int sy = GetSystemMetrics(SM_CYSCREEN);
+
+
+	//GetDesktopResolution(sx, sy);
+
+	// Calculate screen ratio
+	sr = sy / sx;
+	// Calculate X and Y offset
+	// X Offset is untested, and therefore temporarily disabled
+	//xo = tmax_x * sr / 4;
+	yo = bottom * sr;
+
+	// Halve xo and yo for the next step
+	// xo = xo / 2;
+	//yo = yo / 2;
+
+	// Compensate for display/touchpad ratio difference
+	//bottom = (sy / sx) * right;
+
+	// Center the active area
+	//tmin_x = tmin_x + xo;
+	//tmax_x = tmax_x + xo;
+	//tmin_y = tmin_y + yo;
+	//tmax_y = tmax_y + yo;
+
+	// Compensate for display/touchpad ratio difference
+	//tmax_y=(sy / sx) * tmax_x;
+	//tmax_y=(int)newty;
+	return yo;
+
+}
+
 // Converts a touchpad point to a "screen" point. Note that a screen
 // point here is not a actual pixel coordinate, but a value between 0
 // and 65535. (0, 0) is the top-left corner, (65535, 65535) is the
 // bottom-right corner.
-static POINT
-AT_TouchpadToScreen(RECT touchpadRect, POINT touchpadPoint)
+static POINT;
+POINT AT_TouchpadToScreen(RECT touchpadRect, POINT touchpadPoint)
 {
-    // Clamp point within touch bounds
-    LONG tpX = max(touchpadRect.left, min(touchpadRect.right, touchpadPoint.x));
-    LONG tpY = max(touchpadRect.top, min(touchpadRect.bottom, touchpadPoint.y));
+	//Adds a 'deadzone' to either the sides or top/bottom to prevent stretching of the area
+	if (RATIO_COMP == true) {
+		double scrx = GetSystemMetrics(SM_CXSCREEN);
+		double scry = GetSystemMetrics(SM_CYSCREEN);
+
+		double scrratio = scry / scrx;
+		double tpratio = touchpadRect.right / touchpadRect.bottom;
+
+		if (scrratio > tpratio)
+		{
+			int offset = (int)touchpadRect.bottom * scrratio / 4;
+			touchpadRect.left = touchpadRect.left + offset;
+			touchpadRect.right = touchpadRect.right - offset;
+		}
+		else
+		{
+			int offset = (int)touchpadRect.bottom * scrratio / 4;
+			touchpadRect.top = touchpadRect.top + offset;
+			touchpadRect.bottom = touchpadRect.bottom - offset;
+			//printf("%s\n", (char)tpX);
+		}
+	}
+	// Clamp point within touch bounds
+
+	LONG tpX = max(touchpadRect.left, min(touchpadRect.right, touchpadPoint.x));
+	LONG tpY = max(touchpadRect.top, min(touchpadRect.bottom, touchpadPoint.y));
+
+	//printf("String: %d\n", sr);
+
+
+	//LONG tpHeight_comp = Ratio_Compensate(tpX, tpY);
 
     LONG tpDeltaX = tpX - touchpadRect.left;
-    LONG tpDeltaY = tpY - touchpadRect.top;
+    LONG tpDeltaY = tpY - touchpadRect.top ;
+
+	
 
     // As per HID spec, maximum is inclusive, so we need to add 1 here
+	
     LONG tpWidth = touchpadRect.right + 1 - touchpadRect.left;
     LONG tpHeight = touchpadRect.bottom + 1 - touchpadRect.top;
+	
+
 
     LONG scDeltaX = (tpDeltaX << 16) / tpWidth;
     LONG scDeltaY = (tpDeltaY << 16) / tpHeight;
-
+	//std::cout << sr << "\n";
     POINT screenPoint;
     screenPoint.x = scDeltaX;
     screenPoint.y = scDeltaY;
